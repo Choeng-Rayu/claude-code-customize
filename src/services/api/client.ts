@@ -293,11 +293,30 @@ export async function getAnthropicClient({
       googleAuth,
       ...(isDebugToStdErr() && { logger: createStderrLogger() }),
     }
-    // we have always been lying about the return type - this doesn't support batching or models
-    return new AnthropicVertex(vertexArgs) as unknown as Anthropic
+  // we have always been lying about the return type - this doesn't support batching or models
+  return new AnthropicVertex(vertexArgs) as unknown as Anthropic
+}
+if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NVIDIA)) {
+  // NVIDIA API uses direct fetch with axios-like configuration
+  const nvidiaApiKey = process.env.NVIDIA_API_KEY
+  if (!nvidiaApiKey) {
+    throw new Error('NVIDIA_API_KEY environment variable is required when using CLAUDE_CODE_USE_NVIDIA')
   }
+  const nvidiaArgs = {
+    ...ARGS,
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    apiKey: nvidiaApiKey,
+    defaultHeaders: {
+      ...ARGS.defaultHeaders,
+      'Authorization': `Bearer ${nvidiaApiKey}`,
+    },
+    ...(isDebugToStdErr() && { logger: createStderrLogger() }),
+  }
+  // Return a custom client configured for NVIDIA API
+  return new Anthropic(nvidiaArgs) as unknown as Anthropic
+}
 
-  // Determine authentication method based on available tokens
+// Determine authentication method based on available tokens
   const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
     apiKey: isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey(),
     authToken: isClaudeAISubscriber()
