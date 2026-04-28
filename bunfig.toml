@@ -1,0 +1,5 @@
+[install]
+cache = true
+
+[run]
+# Add src to the module resolution paths

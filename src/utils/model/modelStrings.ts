@@ -116,21 +116,58 @@ const updateBedrockModelStrings = sequential(async () => {
 })
 
 function initModelStrings(): void {
-  const ms = getModelStringsState()
-  if (ms !== null) {
-    // Already initialized
-    return
-  }
-  // Initial with default values for non-Bedrock providers
-  if (getAPIProvider() !== 'bedrock') {
-    setModelStringsState(getBuiltinModelStrings(getAPIProvider()))
-    return
-  }
-  // On Bedrock, update model strings in the background without blocking.
-  // Don't set the state in this case so that we can use `sequential` on
-  // `updateBedrockModelStrings` and check for existing state on multiple
-  // calls.
-  void updateBedrockModelStrings()
+	const ms = getModelStringsState()
+	if (ms !== null) {
+		// Already initialized
+		return
+	}
+	// Initial with default values for non-Bedrock providers
+	if (getAPIProvider() !== 'bedrock') {
+		setModelStringsState(getBuiltinModelStrings(getAPIProvider()))
+		return
+	}
+	// On Bedrock, update model strings in the background without blocking.
+	// Don't set the state in this case so that we can use `sequential` on
+	// `updateBedrockModelStrings` and check for existing state on multiple
+	// calls.
+	void updateBedrockModelStrings()
+}
+
+/**
+ * Get the model name for NVIDIA provider
+ * NVIDIA uses OpenAI-compatible model names
+ */
+export function getNvidiaModelName(anthropicModel: string): string {
+	// Map Anthropic model names to NVIDIA model names
+	// All models default to kimi-k2.5 on NVIDIA
+	const nvidiaModelMap: Record<string, string> = {
+		'claude-opus-4-6': 'moonshotai/kimi-k2.5',
+		'claude-sonnet-4-6': 'moonshotai/kimi-k2.5',
+		'claude-sonnet-4-5': 'moonshotai/kimi-k2.5',
+		'claude-opus-4-5': 'moonshotai/kimi-k2.5',
+		'claude-opus-4-1': 'moonshotai/kimi-k2.5',
+		'claude-opus-4': 'moonshotai/kimi-k2.5',
+		'claude-sonnet-4': 'moonshotai/kimi-k2.5',
+		'claude-haiku-4-5': 'moonshotai/kimi-k2.5',
+		'claude-3-7-sonnet': 'moonshotai/kimi-k2.5',
+		'claude-3-5-sonnet': 'moonshotai/kimi-k2.5',
+		'claude-3-5-haiku': 'moonshotai/kimi-k2.5',
+	}
+
+	// Check for exact match first
+	if (nvidiaModelMap[anthropicModel]) {
+		return nvidiaModelMap[anthropicModel]
+	}
+
+	// Check for partial matches
+	for (const [key, value] of Object.entries(nvidiaModelMap)) {
+		if (anthropicModel.includes(key)) {
+			return value
+		}
+	}
+
+	// Default to kimi-k2.5
+	return 'moonshotai/kimi-k2.5'
 }
 
 export function getModelStrings(): ModelStrings {

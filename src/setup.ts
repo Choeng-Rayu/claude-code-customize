@@ -64,6 +64,7 @@ export async function setup(
   worktreePRNumber?: number,
   messagingSocketPath?: string,
 ): Promise<void> {
+  console.error('[DEBUG] setup: started')
   logForDiagnosticsNoPII('info', 'setup_started')
 
   // Check for Node.js version < 18
@@ -83,6 +84,7 @@ export async function setup(
     switchSession(asSessionId(customSessionId))
   }
 
+  console.error('[DEBUG] setup: before UDS check, isBareMode=' + isBareMode())
   // --bare / SIMPLE: skip UDS messaging server and teammate snapshot.
   // Scripted calls don't receive injected messages and don't use swarm teammates.
   // Explicit --messaging-socket-path is the escape hatch (per #23222 gate pattern).
@@ -93,28 +95,33 @@ export async function setup(
     // and $CLAUDE_CODE_MESSAGING_SOCKET is exported before any hook
     // (SessionStart in particular) can spawn and snapshot process.env.
     if (feature('UDS_INBOX')) {
+      console.error('[DEBUG] setup: starting UDS messaging')
       const m = await import('./utils/udsMessaging.js')
       await m.startUdsMessaging(
         messagingSocketPath ?? m.getDefaultUdsSocketPath(),
         { isExplicit: messagingSocketPath !== undefined },
       )
+      console.error('[DEBUG] setup: UDS messaging done')
     }
   }
 
   // Teammate snapshot — SIMPLE-only gate (no escape hatch, swarm not used in bare)
   if (!isBareMode() && isAgentSwarmsEnabled()) {
+    console.error('[DEBUG] setup: capturing teammate snapshot')
     const { captureTeammateModeSnapshot } = await import(
       './utils/swarm/backends/teammateModeSnapshot.js'
     )
     captureTeammateModeSnapshot()
   }
 
+  console.error('[DEBUG] setup: before terminal backup check, isNonInteractive=' + getIsNonInteractiveSession())
   // Terminal backup restoration — interactive only. Print mode doesn't
   // interact with terminal settings; the next interactive session will
   // detect and restore any interrupted setup.
   if (!getIsNonInteractiveSession()) {
     // iTerm2 backup check only when swarms enabled
     if (isAgentSwarmsEnabled()) {
+      console.error('[DEBUG] setup: checking iTerm2 backup')
       const restoredIterm2Backup = await checkAndRestoreITerm2Backup()
       if (restoredIterm2Backup.status === 'restored') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -157,11 +164,13 @@ export async function setup(
     }
   }
 
+  console.error('[DEBUG] setup: before setCwd')
   // IMPORTANT: setCwd() must be called before any other code that depends on the cwd
   setCwd(cwd)
 
   // Capture hooks configuration snapshot to avoid hidden hook modifications.
   // IMPORTANT: Must be called AFTER setCwd() so hooks are loaded from the correct directory
+  console.error('[DEBUG] setup: before captureHooksConfigSnapshot')
   const hooksStart = Date.now()
   captureHooksConfigSnapshot()
   logForDiagnosticsNoPII('info', 'setup_hooks_captured', {
@@ -169,7 +178,9 @@ export async function setup(
   })
 
   // Initialize FileChanged hook watcher — sync, reads hook config snapshot
+  console.error('[DEBUG] setup: before initializeFileChangedWatcher')
   initializeFileChangedWatcher(cwd)
+  console.error('[DEBUG] setup: after initializeFileChangedWatcher')
 
   // Handle worktree creation if requested
   // IMPORTANT: this must be called befiore getCommands(), otherwise /eject won't be available.
@@ -474,4 +485,5 @@ export async function setup(
     // They're needed for cost restoration when resuming sessions.
     // The values will be overwritten when the next session exits.
   }
+  console.error('[DEBUG] setup: function end reached')
 }

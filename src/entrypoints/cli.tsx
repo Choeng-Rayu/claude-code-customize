@@ -1,3 +1,6 @@
+// Shim for build-time MACRO global when running unbundled
+(globalThis as any).MACRO ??= { VERSION: '9.9.9' };
+
 import { feature } from 'bun:bundle';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
