@@ -4,7 +4,6 @@
  * NVIDIA API docs: https://docs.api.nvidia.com/nim/reference
  */
 import type { Stream } from '@anthropic-ai/sdk/streaming.js'
-import { ReadableStream } from 'stream/web'
 
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
 
@@ -17,10 +16,47 @@ export interface NVIDIAConfig {
   defaultHeaders?: Record<string, string>
 }
 
-// Anthropic-compatible message types
+// Anthropic-compatible types
+interface TextBlock {
+  type: 'text'
+  text: string
+}
+
+interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+interface ToolResultBlock {
+  type: 'tool_result'
+  tool_use_id: string
+  content: string
+}
+
+interface ImageBlock {
+  type: 'image'
+  source: {
+    type: 'base64'
+    media_type: string
+    data: string
+  }
+}
+
+interface ToolDefinition {
+  name: string
+  description?: string
+  input_schema?: {
+    type: 'object'
+    properties?: Record<string, unknown>
+    required?: string[]
+  }
+}
+
 interface MessageParam {
   role: 'user' | 'assistant'
-  content: string | Array<{ type: string; text?: string; [key: string]: unknown }>
+  content: string | Array<TextBlock | ToolUseBlock | ToolResultBlock | ImageBlock>
 }
 
 interface MessageCreateParams {
@@ -31,15 +67,18 @@ interface MessageCreateParams {
   top_p?: number
   stream?: boolean
   system?: string
+  tools?: ToolDefinition[]
+  tool_choice?: { type: 'auto' | 'any' | 'tool' | 'none'; name?: string }
   metadata?: Record<string, unknown>
   [key: string]: unknown
 }
 
 interface ContentBlock {
-  type: 'text' | 'thinking'
+  type: 'text' | 'tool_use'
   text?: string
-  thinking?: string
-  signature?: string
+  id?: string
+  name?: string
+  input?: Record<string, unknown>
 }
 
 interface MessageResponse {
@@ -48,7 +87,7 @@ interface MessageResponse {
   role: 'assistant'
   content: ContentBlock[]
   model: string
-  stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | null
+  stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | null
   usage: {
     input_tokens: number
     output_tokens: number
@@ -60,33 +99,72 @@ interface StreamEvent {
   index?: number
   content_block?: ContentBlock
   delta?: {
-    type: 'text_delta' | 'thinking_delta'
+    type: 'text_delta' | 'input_json_delta'
     text?: string
-    thinking?: string
-    signature?: string
-    stop_reason?: string | null
+    partial_json?: string
   }
   usage?: {
     input_tokens?: number
     output_tokens?: number
-    cache_creation_input_tokens?: number
-    cache_read_input_tokens?: number
   }
   message?: {
     usage?: {
       input_tokens?: number
       output_tokens?: number
-      cache_creation_input_tokens?: number
-      cache_read_input_tokens?: number
     }
   }
+}
+
+// OpenAI types
+interface OpenAITool {
+  type: 'function'
+  function: {
+    name: string
+    description?: string
+    parameters?: {
+      type: 'object'
+      properties?: Record<string, unknown>
+      required?: string[]
+    }
+  }
+}
+
+interface OpenAIMessage {
+  role: string
+  content?: string
+  name?: string
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
+  }>
+  tool_call_id?: string
+}
+
+/**
+ * Convert Anthropic tools to OpenAI format
+ */
+function convertToolsToOpenAI(tools?: ToolDefinition[]): OpenAITool[] | undefined {
+  if (!tools || tools.length === 0) return undefined
+
+  return tools.map((tool) => ({
+    type: 'function' as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema,
+    },
+  }))
 }
 
 /**
  * Convert Anthropic messages format to OpenAI format
  */
-function convertMessagesToOpenAI(messages: MessageParam[], system?: string): Array<{ role: string; content: string }> {
-  const openaiMessages: Array<{ role: string; content: string }> = []
+function convertMessagesToOpenAI(messages: MessageParam[], system?: string): OpenAIMessage[] {
+  const openaiMessages: OpenAIMessage[] = []
 
   // Add system message if present
   if (system) {
@@ -97,12 +175,52 @@ function convertMessagesToOpenAI(messages: MessageParam[], system?: string): Arr
     if (typeof msg.content === 'string') {
       openaiMessages.push({ role: msg.role, content: msg.content })
     } else if (Array.isArray(msg.content)) {
-      // Handle content blocks - extract text
-      const textContent = msg.content
-        .filter((c): c is { type: 'text'; text: string } => c.type === 'text' && typeof c.text === 'string')
-        .map(c => c.text)
-        .join('')
-      openaiMessages.push({ role: msg.role, content: textContent })
+      // Handle content blocks
+      let textContent = ''
+      const toolUses: ToolUseBlock[] = []
+      const toolResults: ToolResultBlock[] = []
+
+      for (const block of msg.content) {
+        if (block.type === 'text') {
+          textContent += block.text
+        } else if (block.type === 'tool_use') {
+          toolUses.push(block)
+        } else if (block.type === 'tool_result') {
+          toolResults.push(block)
+        }
+      }
+
+      // Add text message
+      if (textContent) {
+        openaiMessages.push({ role: msg.role, content: textContent })
+      }
+
+      // Add tool calls (for assistant messages)
+      if (msg.role === 'assistant' && toolUses.length > 0) {
+        openaiMessages.push({
+          role: 'assistant',
+          content: textContent || null,
+          tool_calls: toolUses.map((tool) => ({
+            id: tool.id,
+            type: 'function' as const,
+            function: {
+              name: tool.name,
+              arguments: JSON.stringify(tool.input),
+            },
+          })),
+        })
+      }
+
+      // Add tool results (for user messages)
+      if (msg.role === 'user' && toolResults.length > 0) {
+        for (const result of toolResults) {
+          openaiMessages.push({
+            role: 'tool',
+            content: result.content,
+            tool_call_id: result.tool_use_id,
+          })
+        }
+      }
     }
   }
 
@@ -136,38 +254,76 @@ function getNvidiaModel(model: string): string {
 }
 
 /**
- * Convert OpenAI stream chunk to Anthropic-compatible stream event
+ * Convert OpenAI tool choice to Anthropic format
  */
-function convertOpenAIChunkToAnthropicEvent(chunk: Record<string, unknown>, index: number): StreamEvent | null {
-  const choices = chunk.choices as Array<{ delta: { content?: string; role?: string }; finish_reason?: string }> | undefined
+function convertToolChoice(toolChoice?: { type: string; name?: string }): string | { type: string; function?: { name: string } } | undefined {
+  if (!toolChoice) return undefined
 
-  if (!choices || choices.length === 0) {
-    return null
+  if (toolChoice.type === 'auto') return 'auto'
+  if (toolChoice.type === 'none') return 'none'
+  if (toolChoice.type === 'any' || toolChoice.type === 'tool') {
+    if (toolChoice.name) {
+      return {
+        type: 'function',
+        function: { name: toolChoice.name },
+      }
+    }
+    return 'auto'
+  }
+  return undefined
+}
+
+/**
+ * Convert OpenAI response to Anthropic format
+ */
+function convertOpenAIResponseToAnthropic(data: Record<string, unknown>): MessageResponse {
+  const choice = (data.choices as Array<{
+    message: {
+      content?: string
+      tool_calls?: Array<{
+        id: string
+        function: { name: string; arguments: string }
+      }>
+    }
+    finish_reason: string
+  }>)[0]
+
+  const usage = data.usage as { prompt_tokens: number; completion_tokens: number } | undefined
+
+  const content: ContentBlock[] = []
+
+  // Add text content
+  if (choice?.message?.content) {
+    content.push({
+      type: 'text',
+      text: choice.message.content,
+    })
   }
 
-  const choice = choices[0]
-  const delta = choice.delta
-
-  // Handle content
-  if (delta?.content) {
-    return {
-      type: 'content_block_delta',
-      index: 0,
-      delta: {
-        type: 'text_delta',
-        text: delta.content,
-      },
+  // Add tool calls
+  if (choice?.message?.tool_calls) {
+    for (const toolCall of choice.message.tool_calls) {
+      content.push({
+        type: 'tool_use',
+        id: toolCall.id,
+        name: toolCall.function.name,
+        input: JSON.parse(toolCall.function.arguments),
+      })
     }
   }
 
-  // Handle finish
-  if (choice.finish_reason) {
-    return {
-      type: 'message_stop',
-    }
+  return {
+    id: (data.id as string) ?? `nvidia-${Date.now()}`,
+    type: 'message',
+    role: 'assistant',
+    content,
+    model: 'moonshotai/kimi-k2.5',
+    stop_reason: choice?.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn',
+    usage: {
+      input_tokens: usage?.prompt_tokens ?? 0,
+      output_tokens: usage?.completion_tokens ?? 0,
+    },
   }
-
-  return null
 }
 
 /**
@@ -182,21 +338,18 @@ async function* createStreamingResponse(
   }
 
   let fullContent = ''
+  let currentToolCall: { id: string; name: string; arguments: string } | null = null
   let inputTokens = 0
   let outputTokens = 0
 
-  // Signal message start with usage (Anthropic SDK compat)
+  // Signal message start
   yield {
     type: 'message_start',
     message: {
-      usage: {
-        input_tokens: 0,
-        output_tokens: 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
+      usage: { input_tokens: 0, output_tokens: 0 },
     },
   }
+
   yield {
     type: 'content_block_start',
     index: 0,
@@ -223,14 +376,72 @@ async function* createStreamingResponse(
 
       try {
         const chunk = JSON.parse(data) as Record<string, unknown>
-        const event = convertOpenAIChunkToAnthropicEvent(chunk, 0)
+        const delta = (chunk.choices as Array<{
+          delta: {
+            content?: string
+            tool_calls?: Array<{
+              index: number
+              id?: string
+              function?: { name?: string; arguments?: string }
+            }>
+          }
+        }>)[0]?.delta
 
-        if (event?.type === 'content_block_delta' && event.delta?.text) {
-          fullContent += event.delta.text
-          yield event
+        // Handle text content
+        if (delta?.content) {
+          fullContent += delta.content
+          yield {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'text_delta', text: delta.content },
+          }
         }
 
-        // Track usage if available
+        // Handle tool calls
+        if (delta?.tool_calls) {
+          for (const toolCall of delta.tool_calls) {
+            if (toolCall.function?.name) {
+              // Start new tool call
+              if (currentToolCall) {
+                // Finish previous tool call
+                yield {
+                  type: 'content_block_stop',
+                  index: 1,
+                }
+              }
+
+              currentToolCall = {
+                id: toolCall.id ?? `tool_${Date.now()}`,
+                name: toolCall.function.name,
+                arguments: '',
+              }
+
+              yield {
+                type: 'content_block_start',
+                index: 1,
+                content_block: {
+                  type: 'tool_use',
+                  id: currentToolCall.id,
+                  name: currentToolCall.name,
+                },
+              }
+            }
+
+            if (toolCall.function?.arguments) {
+              currentToolCall!.arguments += toolCall.function.arguments
+              yield {
+                type: 'content_block_delta',
+                index: 1,
+                delta: {
+                  type: 'input_json_delta',
+                  partial_json: toolCall.function.arguments,
+                },
+              }
+            }
+          }
+        }
+
+        // Track usage
         const usage = chunk.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined
         if (usage) {
           inputTokens = usage.prompt_tokens ?? inputTokens
@@ -245,15 +456,17 @@ async function* createStreamingResponse(
   // Signal content block stop
   yield { type: 'content_block_stop', index: 0 }
 
-  // Signal message delta with usage and stop_reason (Anthropic SDK compat)
+  if (currentToolCall) {
+    yield { type: 'content_block_stop', index: 1 }
+  }
+
+  // Signal message delta
   yield {
     type: 'message_delta',
     delta: { stop_reason: 'end_turn' },
     usage: {
       input_tokens: inputTokens || Math.ceil(fullContent.length / 4),
       output_tokens: outputTokens || Math.ceil(fullContent.length / 4),
-      cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
     },
   }
 
@@ -261,13 +474,26 @@ async function* createStreamingResponse(
   yield { type: 'message_stop' }
 
   // Return final message
+  const content: ContentBlock[] = []
+  if (fullContent) {
+    content.push({ type: 'text', text: fullContent })
+  }
+  if (currentToolCall) {
+    content.push({
+      type: 'tool_use',
+      id: currentToolCall.id,
+      name: currentToolCall.name,
+      input: JSON.parse(currentToolCall.arguments || '{}'),
+    })
+  }
+
   return {
     id: `nvidia-${Date.now()}`,
     type: 'message',
     role: 'assistant',
-    content: [{ type: 'text', text: fullContent }],
+    content,
     model: 'moonshotai/kimi-k2.5',
-    stop_reason: 'end_turn',
+    stop_reason: currentToolCall ? 'tool_use' : 'end_turn',
     usage: {
       input_tokens: inputTokens || Math.ceil(fullContent.length / 4),
       output_tokens: outputTokens || Math.ceil(fullContent.length / 4),
@@ -297,22 +523,30 @@ export class NVIDIAClient {
           params: MessageCreateParams,
           options?: { signal?: AbortSignal; headers?: Record<string, string> },
         ): any => {
-          // Start the operation immediately, but return a promise-like object
-          // with .withResponse() and .asResponse() methods (Anthropic SDK compat)
           const operationPromise = (async () => {
             const openaiMessages = convertMessagesToOpenAI(
               params.messages,
               params.system,
             )
             const nvidiaModel = getNvidiaModel(params.model)
+            const openaiTools = convertToolsToOpenAI(params.tools)
 
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
               model: nvidiaModel,
               messages: openaiMessages,
               max_tokens: params.max_tokens ?? 4096,
               temperature: params.temperature ?? 1.0,
               top_p: params.top_p ?? 1.0,
               stream: params.stream ?? false,
+            }
+
+            if (openaiTools) {
+              requestBody.tools = openaiTools
+            }
+
+            const toolChoice = convertToolChoice(params.tool_choice)
+            if (toolChoice) {
+              requestBody.tool_choice = toolChoice
             }
 
             const headers: Record<string, string> = {
@@ -342,20 +576,17 @@ export class NVIDIAClient {
               )
             }
 
-            // Clone the response for .withResponse() / .asResponse()
             const responseClone = response.clone()
 
             // Handle streaming
             if (params.stream) {
               const generator = createStreamingResponse(response)
 
-              // Create a Stream-like object
               const streamObj = {
                 [Symbol.asyncIterator]: () => generator,
                 controller: {
                   abort: () => {
-                    // Abort the fetch
-                    // Note: fetch abort controller would need to be wired through
+                    // Abort logic would go here
                   },
                 },
               } as unknown as Stream<StreamEvent>
@@ -365,39 +596,13 @@ export class NVIDIAClient {
 
             // Handle non-streaming
             const data = (await response.json()) as Record<string, unknown>
-            const choices = data.choices as
-              | Array<{
-                  message: { content: string }
-                  finish_reason: string
-                }>
-              | undefined
-            const usage = data.usage as
-              | { prompt_tokens: number; completion_tokens: number }
-              | undefined
-
-            const content = choices?.[0]?.message?.content ?? ''
-
-            const messageResponse: MessageResponse = {
-              id: (data.id as string) ?? `nvidia-${Date.now()}`,
-              type: 'message',
-              role: 'assistant',
-              content: [{ type: 'text', text: content }],
-              model: nvidiaModel,
-              stop_reason:
-                choices?.[0]?.finish_reason === 'stop' ? 'end_turn' : null,
-              usage: {
-                input_tokens: usage?.prompt_tokens ?? 0,
-                output_tokens: usage?.completion_tokens ?? 0,
-              },
-            }
+            const messageResponse = convertOpenAIResponseToAnthropic(data)
 
             return { data: messageResponse, rawResponse: responseClone }
           })()
 
-          // Create a promise that resolves to the data
           const dataPromise = operationPromise.then((r) => r.data)
 
-          // Add .withResponse() and .asResponse() methods (Anthropic SDK compat)
           ;(dataPromise as any).withResponse = async () => {
             const { data, rawResponse } = await operationPromise
             return {
