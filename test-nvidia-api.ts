@@ -1,8 +1,12 @@
-const apiKey = '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'
+const apiKey = process.env.NVIDIA_API_KEY
+if (!apiKey) {
+  console.error('NVIDIA_API_KEY is required')
+  process.exit(1)
+}
 const url = 'https://integrate.api.nvidia.com/v1/chat/completions'
 
 const body = {
-  model: 'moonshotai/kimi-k2.5',
+  model: 'moonshotai/kimi-k2.6',
   messages: [{ role: 'user', content: 'Say hello' }],
   max_tokens: 100,
   stream: false,

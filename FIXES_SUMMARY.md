@@ -1,5 +1,114 @@
 # Fixes Summary - Claude Code NVIDIA Integration
 
+## Latest Update - Doubleword Kimi K2.6 Provider Fixes
+
+### 1. Doubleword Provider Added
+**Files:**
+- `src/utils/model/providers.ts`
+- `src/services/api/client.ts`
+- `src/utils/model/configs.ts`
+- `src/utils/managedEnvConstants.ts`
+- `src/utils/auth.ts`
+- `start-claude.sh`
+
+#### Fixed Issues:
+- Added `doubleword` as a first-class API provider.
+- Added `CLAUDE_CODE_USE_DOUBLEWORD` and `API_PROVIDER=doubleword` routing.
+- Added Doubleword auth via `DOUBLEWORD_API_KEY`, with compatibility for the existing `DoubleWord_API_KEY` env name.
+- Disabled Anthropic OAuth/API-key resolution for Doubleword/NVIDIA provider modes so third-party provider startup does not fail on missing Anthropic credentials.
+- Updated `start-claude.sh` to load `src/.env`, default to Doubleword, and avoid printing secrets.
+
+#### Model:
+```typescript
+doubleword: 'moonshotai/Kimi-K2.6'
+```
+
+---
+
+### 2. OpenAI-Compatible Adapter Refactor
+**File:** `src/services/api/nvidiaAdapter.ts`
+
+#### Fixed Issues:
+- Generalized the NVIDIA adapter into an OpenAI-compatible adapter used by both NVIDIA and Doubleword.
+- Added `createDoublewordClient()`.
+- Added `client.messages.create` alias in addition to `client.beta.messages.create`.
+- Prevented Anthropic/default `Authorization` headers from overriding the provider API key.
+- Kept NVIDIA support and moved its default model from the EOL `moonshotai/kimi-k2.5` to `moonshotai/kimi-k2.6`.
+
+---
+
+### 3. Tool Calling and Tool Result Format Fixes
+**File:** `src/services/api/nvidiaAdapter.ts`
+
+#### Fixed Issues:
+- Fixed assistant messages with both text and `tool_use` blocks being converted into duplicate OpenAI assistant messages.
+- Fixed user messages with `tool_result` blocks so tool results are emitted in OpenAI `role: "tool"` format and surrounding user text stays ordered.
+- Added support for block-array tool result content instead of only string content.
+- Added image block conversion to OpenAI `image_url` parts.
+- Fixed `tool_choice: { type: "any" }` to map to OpenAI `required`.
+- Fixed streaming tool-only responses so they no longer open an empty text block before the tool block.
+- Fixed multiple streamed tool calls so each tool call gets a stable unique content block index.
+- Fixed streamed partial JSON accumulation and final parsing for tool inputs.
+
+---
+
+### 4. HTML Entity / Symbol Cleanup
+**File:** `src/services/api/nvidiaAdapter.ts`
+
+#### Root Cause:
+Kimi/Doubleword can emit HTML entities such as `&#39;`, `&quot;`, and `&amp;` in assistant text or tool-call string arguments. Claude Code displayed those entities literally, for example:
+
+```text
+I&#39;m Kimi
+```
+
+#### Fixed Issues:
+- Decodes HTML entities in non-streaming assistant text before display.
+- Decodes HTML entities in streaming assistant text, including entities split across chunks such as `&` + `#39;`.
+- Decodes HTML entities recursively in parsed tool-call arguments so file writes, shell commands, skill calls, and MCP/native tool calls receive clean strings.
+- Preserves JSON validity while decoding streamed tool-call arguments. For example, `&quot;` inside a streamed JSON string becomes escaped JSON (`\"`) until parsed.
+- Leaves raw tool result content going back to the model unchanged, so file reads, command output, and MCP output are not accidentally mutated.
+
+#### Example After Fix:
+```text
+I'm "ok" & ready
+```
+
+---
+
+### 5. Verification Performed
+
+#### Static Checks:
+```bash
+bun --check src/services/api/nvidiaAdapter.ts
+bun --check src/services/api/client.ts
+bun --check src/utils/auth.ts
+bun --check src/utils/model/providers.ts
+bun --check src/utils/model/configs.ts
+bun --check src/utils/model/modelStrings.ts
+```
+
+#### Provider/API Checks:
+```bash
+bun --env-file=src/.env test-doubleword.ts
+bun --env-file=src/.env test-nvidia-api.ts
+```
+
+#### Tool/Display Checks:
+```bash
+./start-claude.sh --print "Reply exactly: I'm \"ok\" & ready"
+./start-claude.sh --permission-mode bypassPermissions --print "Create a file named doubleword_entity_tool_test.txt in the current directory with exactly this text: I'm \"ok\" & ready"
+```
+
+#### Results:
+- Doubleword chat completion returned HTTP 200.
+- Doubleword tool calling returned Anthropic-compatible `tool_use` blocks.
+- Streamed tool calls emitted valid `content_block_start`, `input_json_delta`, `content_block_stop`, and `message_delta` events.
+- Full Claude Code native file-write tool loop created the requested file with exact decoded text.
+- The visible assistant output no longer showed `&#39;` for apostrophes in the tested paths.
+
+---
+
 ## ✅ Completed Fixes
 
 ### 1. NVIDIA API Adapter with Tool Support
@@ -119,7 +228,7 @@ function convertOpenAIResponseToAnthropic(data: Record<string, unknown>): Messag
 
 #### Changes:
 - ✅ Added `nvidia` provider to all model configs
-- ✅ All models map to `moonshotai/kimi-k2.5`
+- ✅ All models map to `moonshotai/kimi-k2.6`
 
 ```typescript
 export const CLAUDE_OPUS_4_6_CONFIG = {
@@ -127,7 +236,7 @@ export const CLAUDE_OPUS_4_6_CONFIG = {
   bedrock: 'us.anthropic.claude-opus-4-6-v1',
   vertex: 'claude-opus-4-6',
   foundry: 'claude-opus-4-6',
-  nvidia: 'moonshotai/kimi-k2.5',
+  nvidia: 'moonshotai/kimi-k2.6',
 } as const satisfies ModelConfig
 ```
 

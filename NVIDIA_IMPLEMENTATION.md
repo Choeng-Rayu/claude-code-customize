@@ -6,7 +6,7 @@ This document describes the implementation of NVIDIA API support in Claude Code.
 
 The NVIDIA API integration allows Claude Code to use NVIDIA's OpenAI-compatible API endpoint (`https://integrate.api.nvidia.com/v1`) instead of Anthropic's API. This is useful for:
 
-- Running Claude Code with NVIDIA's AI models (e.g., `moonshotai/kimi-k2.5`)
+- Running Claude Code with NVIDIA's AI models (e.g., `moonshotai/kimi-k2.6`)
 - Using NVIDIA's inference infrastructure
 - Testing with alternative model providers
 
@@ -41,7 +41,7 @@ if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NVIDIA)) {
 ```
 
 ### 3. `src/utils/model/configs.ts` (MODIFIED)
-Added `nvidia` provider to all model configurations. All models map to `moonshotai/kimi-k2.5` on NVIDIA:
+Added `nvidia` provider to all model configurations. All models map to `moonshotai/kimi-k2.6` on NVIDIA:
 
 ```typescript
 export const CLAUDE_OPUS_4_6_CONFIG = {
@@ -49,7 +49,7 @@ export const CLAUDE_OPUS_4_6_CONFIG = {
   bedrock: 'us.anthropic.claude-opus-4-6-v1',
   vertex: 'claude-opus-4-6',
   foundry: 'claude-opus-4-6',
-  nvidia: 'moonshotai/kimi-k2.5',
+  nvidia: 'moonshotai/kimi-k2.6',
 } as const satisfies ModelConfig
 ```
 
@@ -78,15 +78,15 @@ bun run src/main.tsx
 
 ## Model Mapping
 
-All Anthropic model names are mapped to NVIDIA's `moonshotai/kimi-k2.5` model:
+All Anthropic model names are mapped to NVIDIA's `moonshotai/kimi-k2.6` model:
 
 | Anthropic Model | NVIDIA Model |
 |-----------------|--------------|
-| claude-opus-4-6 | moonshotai/kimi-k2.5 |
-| claude-sonnet-4-6 | moonshotai/kimi-k2.5 |
-| claude-sonnet-4-5 | moonshotai/kimi-k2.5 |
-| claude-haiku-4-5 | moonshotai/kimi-k2.5 |
-| etc. | moonshotai/kimi-k2.5 |
+| claude-opus-4-6 | moonshotai/kimi-k2.6 |
+| claude-sonnet-4-6 | moonshotai/kimi-k2.6 |
+| claude-sonnet-4-5 | moonshotai/kimi-k2.6 |
+| claude-haiku-4-5 | moonshotai/kimi-k2.6 |
+| etc. | moonshotai/kimi-k2.6 |
 
 ## Technical Details
 
@@ -146,7 +146,7 @@ interface MessageResponse {
 - Add tool calling support
 - Implement proper thinking/reasoning block handling
 - Add image/multimodal support
-- Support for multiple NVIDIA models (not just kimi-k2.5)
+- Support for multiple NVIDIA models (not just kimi-k2.6)
 - Model capability detection
 
 ## Testing

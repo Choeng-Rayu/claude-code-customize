@@ -20,7 +20,7 @@ cd /home/rayu/claude-code-customize
 ```bash
 cd /home/rayu/claude-code-customize
 export CLAUDE_CODE_USE_NVIDIA=1
-export NVIDIA_API_KEY=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
+export NVIDIA_API_KEY=nvapi-your-key
 bun run src/main.tsx
 ```
 
@@ -105,7 +105,7 @@ bun run demo.ts
 - Wait a few seconds and try again
 
 ### 2. Model Mapping
-- All Anthropic models map to `moonshotai/kimi-k2.5`
+- All Anthropic models map to `moonshotai/kimi-k2.6`
 - This is the NVIDIA model configured for this integration
 
 ### 3. Missing Tools

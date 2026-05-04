@@ -3,7 +3,11 @@
  * Simple test script for NVIDIA API integration
  */
 
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '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'
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY
+if (!NVIDIA_API_KEY) {
+  console.error('NVIDIA_API_KEY is required')
+  process.exit(1)
+}
 
 interface MessageParam {
   role: 'user' | 'assistant'
@@ -18,7 +22,7 @@ async function testNvidiaAPI() {
   ]
 
   const requestBody = {
-    model: 'moonshotai/kimi-k2.5',
+    model: 'moonshotai/kimi-k2.6',
     messages: messages,
     max_tokens: 1024,
     temperature: 1.0,

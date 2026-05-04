@@ -296,7 +296,11 @@ export async function getAnthropicClient({
   // we have always been lying about the return type - this doesn't support batching or models
   return new AnthropicVertex(vertexArgs) as unknown as Anthropic
 }
-if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NVIDIA)) {
+if (
+  (isEnvTruthy(process.env.CLAUDE_CODE_USE_NVIDIA) ||
+    process.env.API_PROVIDER?.toLowerCase() === 'nvidia') &&
+  process.env.API_PROVIDER?.toLowerCase() !== 'doubleword'
+) {
   // NVIDIA API uses OpenAI-compatible format, not Anthropic format
   // We use a custom adapter to translate between the two
   const { createNVIDIAClient } = await import('./nvidiaAdapter.js')
@@ -311,6 +315,28 @@ if (isEnvTruthy(process.env.CLAUDE_CODE_USE_NVIDIA)) {
   }
   // Return the NVIDIA client that mimics Anthropic SDK
   return createNVIDIAClient(nvidiaArgs) as unknown as Anthropic
+}
+if (
+  isEnvTruthy(process.env.CLAUDE_CODE_USE_DOUBLEWORD) ||
+  process.env.API_PROVIDER?.toLowerCase() === 'doubleword'
+) {
+  // Doubleword uses an OpenAI-compatible chat/completions API with OpenAI-style
+  // tool schemas.
+  const { createDoublewordClient } = await import('./nvidiaAdapter.js')
+  const doublewordApiKey =
+    process.env.DOUBLEWORD_API_KEY || process.env.DoubleWord_API_KEY
+  if (!doublewordApiKey) {
+    throw new Error(
+      'DOUBLEWORD_API_KEY environment variable is required when using CLAUDE_CODE_USE_DOUBLEWORD',
+    )
+  }
+  const doublewordArgs = {
+    apiKey: doublewordApiKey,
+    baseURL: process.env.DOUBLEWORD_BASE_URL ?? 'https://api.doubleword.ai/v1',
+    defaultHeaders: ARGS.defaultHeaders,
+    defaultModel: 'moonshotai/Kimi-K2.6',
+  }
+  return createDoublewordClient(doublewordArgs) as unknown as Anthropic
 }
 
 // Determine authentication method based on available tokens

@@ -1,14 +1,15 @@
 (globalThis as any).MACRO = { VERSION: '9.9.9' }
-process.env.CLAUDE_CODE_USE_NVIDIA = '1'
-process.env.NVIDIA_API_KEY = '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'
+process.env.API_PROVIDER ??= 'doubleword'
+process.env.CLAUDE_CODE_USE_DOUBLEWORD ??= '1'
+process.env.DOUBLEWORD_API_KEY ??= process.env.DoubleWord_API_KEY
 
 console.error('Testing API client creation...')
-console.error('CLAUDE_CODE_USE_NVIDIA:', process.env.CLAUDE_CODE_USE_NVIDIA)
-console.error('NVIDIA_API_KEY set:', !!process.env.NVIDIA_API_KEY)
+console.error('API_PROVIDER:', process.env.API_PROVIDER)
+console.error('DOUBLEWORD_API_KEY set:', !!process.env.DOUBLEWORD_API_KEY)
 
 try {
   const { getAnthropicClient } = await import('./src/services/api/client.js')
-  const client = await getAnthropicClient({ apiKey: 'dummy' })
+  const client = await getAnthropicClient({ apiKey: 'dummy', maxRetries: 0 })
   console.error('Client created:', client.constructor.name)
   console.error('Has beta.messages:', !!client.beta?.messages)
   console.error('Has messages:', !!client.messages)

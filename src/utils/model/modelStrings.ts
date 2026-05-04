@@ -139,19 +139,19 @@ function initModelStrings(): void {
  */
 export function getNvidiaModelName(anthropicModel: string): string {
 	// Map Anthropic model names to NVIDIA model names
-	// All models default to kimi-k2.5 on NVIDIA
+	// All models default to kimi-k2.6 on NVIDIA
 	const nvidiaModelMap: Record<string, string> = {
-		'claude-opus-4-6': 'moonshotai/kimi-k2.5',
-		'claude-sonnet-4-6': 'moonshotai/kimi-k2.5',
-		'claude-sonnet-4-5': 'moonshotai/kimi-k2.5',
-		'claude-opus-4-5': 'moonshotai/kimi-k2.5',
-		'claude-opus-4-1': 'moonshotai/kimi-k2.5',
-		'claude-opus-4': 'moonshotai/kimi-k2.5',
-		'claude-sonnet-4': 'moonshotai/kimi-k2.5',
-		'claude-haiku-4-5': 'moonshotai/kimi-k2.5',
-		'claude-3-7-sonnet': 'moonshotai/kimi-k2.5',
-		'claude-3-5-sonnet': 'moonshotai/kimi-k2.5',
-		'claude-3-5-haiku': 'moonshotai/kimi-k2.5',
+		'claude-opus-4-6': 'moonshotai/kimi-k2.6',
+		'claude-sonnet-4-6': 'moonshotai/kimi-k2.6',
+		'claude-sonnet-4-5': 'moonshotai/kimi-k2.6',
+		'claude-opus-4-5': 'moonshotai/kimi-k2.6',
+		'claude-opus-4-1': 'moonshotai/kimi-k2.6',
+		'claude-opus-4': 'moonshotai/kimi-k2.6',
+		'claude-sonnet-4': 'moonshotai/kimi-k2.6',
+		'claude-haiku-4-5': 'moonshotai/kimi-k2.6',
+		'claude-3-7-sonnet': 'moonshotai/kimi-k2.6',
+		'claude-3-5-sonnet': 'moonshotai/kimi-k2.6',
+		'claude-3-5-haiku': 'moonshotai/kimi-k2.6',
 	}
 
 	// Check for exact match first
@@ -166,8 +166,8 @@ export function getNvidiaModelName(anthropicModel: string): string {
 		}
 	}
 
-	// Default to kimi-k2.5
-	return 'moonshotai/kimi-k2.5'
+	// Default to kimi-k2.6
+	return 'moonshotai/kimi-k2.6'
 }
 
 export function getModelStrings(): ModelStrings {

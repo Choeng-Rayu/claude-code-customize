@@ -1,7 +1,5 @@
 # Claude Code – Leaked Source Archive & NVIDIA Integration
 
-Repository: **claude-code-customize** (owner: **Choeng-Rayu**)
-
 ## 📖 Summary
 
 This repository contains the full source code of **Claude Code**, Anthropic's AI‑coding CLI, which was unintentionally published on npm via a sourcemap leak. The codebase includes a ~785 KB `main.tsx` entry point, a React‑Ink terminal UI, 40+ agent tools, a Tamagotchi‑style buddy system, Dream & Ultraplan services, and many internal utilities.
@@ -23,7 +21,7 @@ This repository contains the full source code of **Claude Code**, Anthropic's AI
 ### Install
 ```bash
 git clone https://github.com/Choeng-Rayu/claude-code-customize.git
-cd claude-code-customize
+cd claude-leaked
 bun install   # or npm install
 ```
 
